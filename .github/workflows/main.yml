@@ -1,73 +1,83 @@
 name: Intelligent Operations with Amazon Bedrock
 
-# Enable manual trigger and pull request event trigger
+# Define workflow triggers
 on:
   workflow_dispatch:
   pull_request:
-    types: [opened, synchronize, reopened]  # Added reopened to handle PR re-triggers
+    types: [opened, synchronize, reopened]
 
-# Avoid running the same workflow on the same branch concurrently
+# Prevent concurrent runs on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   review:
     runs-on: ubuntu-latest
+
     permissions:
-      # Required permissions for GitHub Actions
-      id-token: write           # For authenticating with AWS
-      contents: write           # For reading and pushing to the repo
-      pull-requests: write      # For writing PR comments
+      id-token: write          # For AWS OIDC authentication
+      contents: write          # For accessing repository contents
+      pull-requests: write     # For commenting on pull requests
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      # Step 1: Checkout the code
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
+      # Step 2: Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-    # Install necessary dependencies for custom GitHub actions
-    - name: Install dependencies @actions/core and @actions/github
-      run: |
-        npm install @actions/core
-        npm install @actions/github
-      shell: bash
+      # Step 3: Install required dependencies
+      - name: Install Dependencies for GitHub Actions
+        run: |
+          npm install @actions/core @actions/github
+        shell: bash
 
-    # Check if required dependencies are installed
-    - name: Check if required dependencies are installed
-      run: |
-        npm list @actions/core
-        npm list @actions/github
-      shell: bash
+      # Step 4: Verify installation of dependencies
+      - name: Verify Dependencies Installation
+        run: |
+          npm list @actions/core
+          npm list @actions/github
+        shell: bash
 
-    # Debug to check if the GitHub token is set
-    - name: Debug GitHub Token
-      run: |
-        if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
-          echo "GitHub Token is set"
-        else
-          echo "GitHub Token is not set"
-        fi
+      # Step 5: Debug GitHub Token availability
+      - name: Verify GitHub Token
+        run: |
+          if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "GitHub Token is set."
+          else
+            echo "GitHub Token is not set."
+            exit 1
+          fi
 
-    # Assume the specified IAM role and set up AWS credentials
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }} # Ensure this secret is set in your repo
-        aws-region: us-east-1
+      # Step 6: Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
 
-    # Run the Intelligent GitHub Actions from your forked repository
-    - name: Intelligent GitHub Actions
-      uses: Tanuj-Koduri/node-hello@main
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}  # Automatically provided by GitHub
-        aws-region: us-east-1                      # AWS region for Bedrock
-        model-id: anthropic.claude-3-sonnet-20240229-v1:0  # Bedrock model ID
-        generate-code-review-exclude-files: '*.md,*.json,*.yml,*.yaml'
-        generate-code-review-level: 'detailed'
-        generate-code-review: 'true'
-        generate-pr-description: 'true'
-        generate-unit-test: 'true'
-        output-language: 'en'
+      # Step 7: Run the custom Intelligent GitHub Actions
+      - name: Intelligent GitHub Actions
+        uses: Tanuj-Koduri/node-hello@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          aws-region: us-east-1
+          model-id: anthropic.claude-3-sonnet-20240229-v1:0
+          generate-code-review-exclude-files: '*.md,*.json,*.yml,*.yaml'
+          generate-code-review-level: 'detailed'
+          generate-code-review: 'true'
+          generate-pr-description: 'true'
+          generate-unit-test: 'true'
+          output-language: 'en'
+
+      # Step 8: Ensure the job does not run indefinitely
+      - name: Stop Server if Running
+        if: always()
+        run: |
+          pkill -f "node" || echo "No server process found."
+        shell: bash
